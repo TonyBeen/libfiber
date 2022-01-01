@@ -676,11 +676,23 @@ void acl_fiber_schedule_init(int on)
 	__schedule_auto = on;
 }
 
+/**
+ * @brief 创建一个协程所需的资源
+ * @param fn 协程执行函数
+ * @param arg fn的参数，类似pthread_create的第四个参数
+ * @param size 协程运行环境的堆栈大小
+ */
 ACL_FIBER *acl_fiber_create(void (*fn)(ACL_FIBER *, void *),
 	void *arg, size_t size)
 {
 	ACL_FIBER *fiber = fiber_alloc(fn, arg, size);
 
+	// __thread_fiber是线程所有，存活周期为线程存活时长
+	// c由关键字__thread支持，cpp由thread_local支持
+	// 此变量的作用相当于是为每个线程都创建一个主协程，
+	// 主协程的作用就是管理在本线程创建的协程
+	// __thread_fiber在fiber_check()中初始化，fiber_alloc和acl_fiber_schedule均有调用
+	// 故为线程创建第一个用户协程时会先创建__thread_fiber
 	__thread_fiber->count++;
 
 	if (__thread_fiber->slot >= __thread_fiber->size) {
@@ -690,6 +702,8 @@ ACL_FIBER *acl_fiber_create(void (*fn)(ACL_FIBER *, void *),
 			__thread_fiber->size * sizeof(ACL_FIBER *));
 	}
 
+	// __thread_fiber->slot是一个用户协程计数器，表示当前有多少个协程
+	// 将新建的协程放进数组
 	fiber->slot = __thread_fiber->slot;
 	__thread_fiber->fibers[__thread_fiber->slot++] = fiber;
 
